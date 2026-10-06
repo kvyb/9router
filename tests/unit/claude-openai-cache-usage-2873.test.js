@@ -43,7 +43,7 @@ describe("#2873 Claude → OpenAI usage keeps the prompt-cache split", () => {
     const usage = await finalUsage(
       sseStream(events).pipeThrough(createSSETransformStreamWithLogger(FORMATS.CLAUDE, FORMATS.OPENAI, "claude", null, null, "claude")),
     );
-    expect(usage.prompt_tokens_details).toEqual({ cached_tokens: 5000, cache_creation_tokens: 300 });
+    expect(usage.prompt_tokens_details).toEqual({ cached_tokens: 5000, cache_creation_tokens: 300, cache_write_tokens: 300 });
     expect(usage.prompt_tokens - usage.prompt_tokens_details.cached_tokens).toBeGreaterThanOrEqual(400);
     expect(usage.completion_tokens).toBe(7);
   });
@@ -61,7 +61,7 @@ describe("#2873 Claude → OpenAI usage keeps the prompt-cache split", () => {
     // Same two steps handleNonStreamingResponse applies.
     const translated = translateNonStreamingResponse(body, FORMATS.CLAUDE, FORMATS.OPENAI);
     const usage = filterUsageForFormat(addBufferToUsage(translated.usage), FORMATS.OPENAI);
-    expect(usage.prompt_tokens_details).toEqual({ cached_tokens: 5000, cache_creation_tokens: 300 });
+    expect(usage.prompt_tokens_details).toEqual({ cached_tokens: 5000, cache_creation_tokens: 300, cache_write_tokens: 300 });
     expect(usage.prompt_tokens).toBeGreaterThanOrEqual(5400);
     expect(usage.completion_tokens).toBe(7);
   });

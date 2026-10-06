@@ -123,6 +123,11 @@ export function filterUsageForFormat(usage, targetFormat) {
       if (cacheCreation > 0 && details.cache_creation_tokens === undefined) details.cache_creation_tokens = cacheCreation;
       filtered.prompt_tokens_details = details;
     }
+    // Pi / OpenRouter-style clients read cache writes from cache_write_tokens.
+    const cacheWrite = filtered.prompt_tokens_details?.cache_creation_tokens;
+    if (cacheWrite > 0 && filtered.prompt_tokens_details.cache_write_tokens === undefined) {
+      filtered.prompt_tokens_details = { ...filtered.prompt_tokens_details, cache_write_tokens: cacheWrite };
+    }
   }
 
   return filtered;
