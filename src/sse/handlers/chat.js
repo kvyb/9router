@@ -25,6 +25,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
+import { extractClientSessionId, getConnectionAffinity, setConnectionAffinity } from "open-sse/utils/sessionManager.js";
 
 /**
  * Handle chat completion request
@@ -231,9 +232,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastError = null;
   let lastStatus = null;
   let lastHeaders = null;
+  const clientSessionId = extractClientSessionId(clientRawRequest?.headers, body, provider);
+  const affinityKey = clientSessionId ? `${provider}:${clientSessionId}` : null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model });
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
+      requestedModel: requestedModel || model,
+      preferredConnectionId: affinityKey ? getConnectionAffinity(affinityKey) : null,
+    });
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
@@ -311,7 +317,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
     });
 
-    if (result.success) return result.response;
+    if (result.success) {
+      if (affinityKey) setConnectionAffinity(affinityKey, credentials.connectionId);
+      return result.response;
+    }
 
     // Antigravity 409/429: refresh live quota to get exact resetAt before locking
     let quotaResetMs = null;

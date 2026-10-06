@@ -82,6 +82,7 @@ export function clearSessionStore() {
     runtimeSessionStore.clear();
     assistantSessionStore.clear();
     continuationStore.clear();
+    connectionAffinityStore.clear();
 }
 
 // Conversation-stable session store: Key = hash(scope+assistant text), Value = { sessionId, lastUsed }
@@ -135,7 +136,7 @@ function extractAntigravitySession(body) {
     return m ? normalizeSessionId(m[1]) : null;
 }
 
-function extractClientSessionId(headers, body, scope = "") {
+export function extractClientSessionId(headers, body, scope = "") {
     // Claude Code sends the session in a header AND in metadata.user_id; the header
     // survives translation to formats that drop metadata (e.g. Responses API).
     const claude = extractClaudeCodeSession(body?.metadata?.user_id)
@@ -242,6 +243,26 @@ export function resolveContinuationId({ sessionId, connectionId, scope = "", eph
     return continuationId;
 }
 
+// Client session -> connection that last served it. Claude's prompt cache is per
+// account, so keeping a session on one account avoids re-caching its context.
+const connectionAffinityStore = new Map();
+const MAX_AFFINITY_SESSIONS = 5000;
+
+export function getConnectionAffinity(key) {
+    const entry = connectionAffinityStore.get(key);
+    if (!entry) return null;
+    entry.lastUsed = Date.now();
+    return entry.connectionId;
+}
+
+export function setConnectionAffinity(key, connectionId) {
+    connectionAffinityStore.delete(key);
+    if (connectionAffinityStore.size >= MAX_AFFINITY_SESSIONS) {
+        connectionAffinityStore.delete(connectionAffinityStore.keys().next().value);
+    }
+    connectionAffinityStore.set(key, { connectionId, lastUsed: Date.now() });
+}
+
 // Capture session id from request body + credentials (envelope still intact here)
 export function captureSessionId(body, credentials, connectionId, scope = "") {
     return resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId, scope });
@@ -266,6 +287,9 @@ const assistantCleanup = setInterval(() => {
     }
     for (const [key, entry] of continuationStore) {
         if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) continuationStore.delete(key);
+    }
+    for (const [key, entry] of connectionAffinityStore) {
+        if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) connectionAffinityStore.delete(key);
     }
 }, MEMORY_CONFIG.sessionCleanupIntervalMs);
 if (assistantCleanup.unref) assistantCleanup.unref();
