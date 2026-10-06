@@ -184,6 +184,16 @@ export function claudeToOpenAIResponse(chunk, state) {
       }
       break;
     }
+
+    case "error": {
+      // Mid-stream upstream error after HTTP 200 (rate_limit_error, overloaded_error):
+      // OpenAI error frame + [DONE], same shape as buildStreamErrorBytes. Keep the
+      // upstream type in the message so client retry classifiers can match it.
+      const type = chunk.error?.type || "api_error";
+      const message = chunk.error?.message || "Upstream stream error";
+      results.push({ error: { message: `${type}: ${message}`, type, code: type } }, { done: true });
+      break;
+    }
   }
 
   return results.length > 0 ? results : null;
